@@ -1,6 +1,6 @@
 # Insight Sales Hub
 
-Insight Sales Hub is a modern, enterprise-grade Java Spring Boot demonstration application designed to showcase key web development paradigms, microservice architectures, and data structures following **KISS** and **DRY** principles.
+Insight Sales Hub is a modern, enterprise-grade Java Spring Boot demonstration application designed to showcase key web development paradigms, microservice architectures, and data structures.
 
 ---
 
