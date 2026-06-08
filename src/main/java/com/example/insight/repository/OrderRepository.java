@@ -28,8 +28,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     }
 
     /**
-     * Query 1: CTE + Running Total Window Function
-     * Calculates daily sales totals and the cumulative sales running total over time.
+     * Query 1: Get daily sales and running total cumulative sales
      */
     @Query(value = """
             WITH DailySales AS (
@@ -50,8 +49,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<SalesTrendProjection> findDailySalesTrends();
 
     /**
-     * Query 2: CTE + Joins + DENSE_RANK() Window Function
-     * Ranks products by total revenue within their respective categories, filtering by rank limits.
+     * Query 2: Get top products ranked by total revenue per category
      */
     @Query(value = """
             WITH ProductRevenue AS (

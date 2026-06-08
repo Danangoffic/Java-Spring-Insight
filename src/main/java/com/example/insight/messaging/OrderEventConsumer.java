@@ -26,26 +26,25 @@ public class OrderEventConsumer {
         log.info("Received OrderPlacedEvent from Kafka for Order ID: {}", event.getOrderId());
 
         try {
-            // Fetch order from DB
+            // Find order in database
             Order order = orderRepository.findById(event.getOrderId())
                     .orElseThrow(() -> new IllegalArgumentException("Order not found with ID: " + event.getOrderId()));
 
-            // Update order status to PROCESSED (simulation of processing fulfillment)
+            // Update status to PROCESSED
             order.setStatus(OrderStatus.PROCESSED);
             orderRepository.save(order);
-            log.info("Order ID {} status updated to PROCESSED in DB", order.getId());
+            log.info("Order ID {} status updated to PROCESSED", order.getId());
 
-            // Record sales for each product in Redis Sorted Set leaderboard
+            // Save product sales count in Redis Sorted Set
             for (OrderPlacedEvent.OrderItemEvent item : event.getItems()) {
                 productService.recordProductSales(item.getProductId(), item.getQuantity());
             }
 
-            // Publish confirmation event
+            // Publish processed event
             eventProducer.publishOrderProcessed(order.getId());
             
         } catch (Exception e) {
             log.error("Failed to process OrderPlacedEvent for Order ID: {}", event.getOrderId(), e);
-            // In a real application, you might update order to FAILED or send to dead-letter queue
         }
     }
 }

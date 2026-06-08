@@ -22,37 +22,37 @@ public class AnalyticsService {
     private final OrderRepository orderRepository;
 
     /**
-     * Compute real-time statistics in memory using Java Streams.
+     * Calculate sales statistics in-memory using Java Streams.
      */
     @Transactional(readOnly = true)
     public AnalyticsSummaryDto getStreamsSummary() {
-        log.info("Generating analytics summary in memory using Java Streams");
+        log.info("Calculating order summary stats using Streams");
         List<Order> allOrders = orderRepository.findAll();
 
-        // 1. Filter processed orders
+        // Filter: only processed orders
         List<Order> processedOrders = allOrders.stream()
                 .filter(order -> order.getStatus() == OrderStatus.PROCESSED)
                 .collect(Collectors.toList());
 
-        // 2. Calculate total revenue using Stream Map & Reduce
+        // Sum up total revenue
         double totalRevenue = processedOrders.stream()
                 .mapToDouble(Order::getTotalAmount)
                 .reduce(0.0, Double::sum);
 
-        // 3. Calculate average order value
+        // Calculate average order value
         double averageOrderValue = processedOrders.stream()
                 .mapToDouble(Order::getTotalAmount)
                 .average()
                 .orElse(0.0);
 
-        // 4. Group revenue by Payment Method using groupingBy collector
+        // Group revenue by payment method
         Map<String, Double> revenueByPayment = processedOrders.stream()
                 .collect(Collectors.groupingBy(
                         Order::getPaymentMethod,
                         Collectors.summingDouble(Order::getTotalAmount)
                 ));
 
-        // 5. Partition orders into High Value (> $150) vs Low Value using partitioningBy collector
+        // Partition orders: high value (> 150) vs low value
         Map<Boolean, List<Order>> partitionedOrders = processedOrders.stream()
                 .collect(Collectors.partitioningBy(order -> order.getTotalAmount() > 150.0));
 
@@ -75,22 +75,22 @@ public class AnalyticsService {
     }
 
     /**
-     * Fetch daily sales trends using CTE and running total Window Functions (Database-level analytics).
+     * Get daily sales trends using CTE + Window query from database
      */
     @Cacheable(value = "analytics", key = "'sales-trends'")
     @Transactional(readOnly = true)
     public List<OrderRepository.SalesTrendProjection> getDailySalesTrends() {
-        log.info("Cache miss: Running Daily Sales Trend native SQL query");
+        log.info("Running daily sales trends query (Cache miss)");
         return orderRepository.findDailySalesTrends();
     }
 
     /**
-     * Fetch top products by category using CTE and DENSE_RANK() Window Functions (Database-level analytics).
+     * Get ranked top selling products per category from database
      */
     @Cacheable(value = "analytics", key = "'top-products-rank-' + #maxRank")
     @Transactional(readOnly = true)
     public List<OrderRepository.ProductRevenueRankProjection> getTopProductsByCategory(int maxRank) {
-        log.info("Cache miss: Running Top Products Rank native SQL query with rank limit: {}", maxRank);
+        log.info("Running top products per category query (Cache miss). Max rank: {}", maxRank);
         return orderRepository.findTopProductsByCategory(maxRank);
     }
 }

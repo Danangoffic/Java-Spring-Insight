@@ -30,29 +30,32 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public List<Product> getAllProducts() {
-        log.info("Fetching all products from DB");
+        log.info("Fetching all products from database");
         return productRepository.findAll();
     }
 
+    // Cache products by ID in Redis (key will be "products::id")
     @Cacheable(value = "products", key = "#id")
     @Transactional(readOnly = true)
     public Product getProductById(Long id) {
-        log.info("Cache miss: Fetching product ID {} from DB", id);
+        log.info("Cache miss for product ID: {}. Fetching from DB.", id);
         return productRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Product not found with id: " + id));
     }
 
+    // Save product to database and update Redis cache
     @CachePut(value = "products", key = "#product.id")
     @Transactional
     public Product createProduct(Product product) {
-        log.info("Saving product to DB and updating cache: {}", product.getName());
+        log.info("Saving product: {}", product.getName());
         return productRepository.save(product);
     }
 
+    // Update product and save in Redis
     @CachePut(value = "products", key = "#id")
     @Transactional
     public Product updateProduct(Long id, Product productDetails) {
-        log.info("Updating product ID {} in DB and cache", id);
+        log.info("Updating product ID: {}", id);
         Product product = getProductById(id);
         product.setName(productDetails.getName());
         product.setCategory(productDetails.getCategory());
@@ -61,26 +64,27 @@ public class ProductService {
         return productRepository.save(product);
     }
 
+    // Delete product and evict from cache
     @CacheEvict(value = "products", key = "#id")
     @Transactional
     public void deleteProduct(Long id) {
-        log.info("Deleting product ID {} and evicting from cache", id);
+        log.info("Deleting product ID: {}", id);
         productRepository.deleteById(id);
     }
 
     /**
-     * Updates the sales leaderboard in Redis Sorted Set.
+     * Increment units sold score in Redis ZSET
      */
     public void recordProductSales(Long productId, int quantity) {
-        log.info("Recording sale in Redis ZSET: product ID {} with quantity {}", productId, quantity);
+        log.info("Recording sold score in Redis ZSET. Product ID: {}, quantity: {}", productId, quantity);
         redisTemplate.opsForZSet().incrementScore(LEADERBOARD_KEY, productId.toString(), quantity);
     }
 
     /**
-     * Fetches the top-selling products leaderboard from Redis.
+     * Get top sold products from Redis
      */
     public List<ProductLeaderboardDto> getSalesLeaderboard(int limit) {
-        log.info("Fetching top {} selling products from Redis ZSET", limit);
+        log.info("Getting top {} selling products from Redis", limit);
         Set<ZSetOperations.TypedTuple<Object>> range = redisTemplate.opsForZSet()
                 .reverseRangeWithScores(LEADERBOARD_KEY, 0, limit - 1);
 
@@ -88,12 +92,11 @@ public class ProductService {
             return Collections.emptyList();
         }
 
-        // Use Java Streams to map the Redis ZSET tuple results to Leaderboard DTOs
+        // Loop through Redis range result and map to DTOs
         return range.stream().map(tuple -> {
             Long productId = Long.valueOf(tuple.getValue().toString());
             Double score = tuple.getScore();
             
-            // Get product (uses Redis cache if available)
             String productName;
             try {
                 Product product = getProductById(productId);

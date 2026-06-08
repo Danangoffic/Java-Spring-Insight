@@ -34,53 +34,56 @@ public class OrderService {
 
     @Transactional
     public Order placeOrder(String customerName, String paymentMethod, List<OrderItemRequest> itemRequests) {
-        log.info("Processing order placement for customer: {}", customerName);
+        log.info("Starting order checkout for customer: {}", customerName);
 
         List<OrderItem> orderItems = new ArrayList<>();
         double totalAmount = 0.0;
 
-        // 1. Process items, validating inventory using Redis distributed lock
+        // Loop through each item in the order request
         for (OrderItemRequest request : itemRequests) {
             String lockKey = "lock:product:" + request.getProductId();
             
-            // Acquire Redis distributed lock with retry
+            // Lock the product using Redis to avoid double buying
             if (!acquireLockWithRetry(lockKey, 5, 200)) {
-                throw new IllegalStateException("Failed to acquire lock for product ID " + request.getProductId() + ". Please try again.");
+                log.warn("Lock failed for product ID {}. Product is busy.", request.getProductId());
+                throw new IllegalStateException("Product is currently busy, please try again.");
             }
 
             try {
-                // Critical section: Fetch product, validate stock, and decrement inventory
+                // Check if we have enough stock in database
                 Product product = productService.getProductById(request.getProductId());
                 if (product.getStock() < request.getQuantity()) {
-                    throw new IllegalArgumentException("Insufficient stock for product: " + product.getName() 
-                            + ". Available: " + product.getStock() + ", Requested: " + request.getQuantity());
+                    log.warn("Not enough stock for {}. Has: {}, Need: {}", 
+                            product.getName(), product.getStock(), request.getQuantity());
+                    throw new IllegalArgumentException("Insufficient stock for: " + product.getName());
                 }
 
-                // Decrement stock and update
+                // Decrement stock and save
                 product.setStock(product.getStock() - request.getQuantity());
                 productService.updateProduct(product.getId(), product);
 
-                // Build order line item
+                // Save price snapshot
                 OrderItem orderItem = OrderItem.builder()
                         .product(product)
                         .quantity(request.getQuantity())
-                        .price(product.getPrice()) // snapshot price
+                        .price(product.getPrice())
                         .build();
 
                 orderItems.add(orderItem);
                 totalAmount += (product.getPrice() * request.getQuantity());
 
             } finally {
-                // Release the lock
+                // Always delete the lock in finally block
                 redisTemplate.delete(lockKey);
             }
         }
 
-        // 2. Resolve payment strategy via Spring IoC and process payment
+        // Process payment dynamically using our payment strategies
+        log.info("Processing payment via: {}", paymentMethod);
         PaymentStrategy paymentStrategy = paymentResolver.resolve(paymentMethod);
         paymentStrategy.process(totalAmount);
 
-        // 3. Persist Order as PENDING (will be completed asynchronously via Kafka)
+        // Save order as PENDING first (Kafka consumer will set it to PROCESSED)
         Order order = Order.builder()
                 .customerName(customerName)
                 .paymentMethod(paymentMethod)
@@ -94,9 +97,9 @@ public class OrderService {
         }
 
         Order savedOrder = orderRepository.save(order);
-        log.info("Order saved in PENDING state with ID: {}", savedOrder.getId());
+        log.info("Order saved as PENDING with ID: {}", savedOrder.getId());
 
-        // 4. Emit event to Kafka for stream processing
+        // Send order event to Kafka topic
         List<OrderPlacedEvent.OrderItemEvent> eventItems = savedOrder.getItems().stream()
                 .map(item -> OrderPlacedEvent.OrderItemEvent.builder()
                         .productId(item.getProduct().getId())

@@ -28,30 +28,30 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) throws Exception {
         if (productRepository.count() > 0) {
-            log.info("Database already initialized with products. Skipping seeding.");
+            log.info("[Data Seeder] Products catalog is already populated. Skipping database initialization.");
             return;
         }
 
-        log.info("Starting database initialization...");
+        log.info("[Data Seeder] Database is empty. Starting transactional data seeding...");
 
-        // 1. Seed Products
-        Product laptop = Product.builder().name("MacBook Pro").category("Electronics").price(1500.0).stock(20).build();
-        Product phone = Product.builder().name("iPhone 15").category("Electronics").price(1000.0).stock(30).build();
-        Product headphones = Product.builder().name("Sony WH-1000XM5").category("Electronics").price(350.0).stock(50).build();
-        Product coffeeMaker = Product.builder().name("Espresso Machine").category("Appliances").price(500.0).stock(15).build();
-        Product airFryer = Product.builder().name("Digital Air Fryer").category("Appliances").price(120.0).stock(25).build();
-        Product deskLamp = Product.builder().name("LED Desk Lamp").category("Office").price(45.0).stock(40).build();
+        // 1. Seed Products with realistic specifications
+        Product laptop = Product.builder().name("MacBook Pro 16\" M3 Max").category("Electronics").price(2499.0).stock(15).build();
+        Product phone = Product.builder().name("iPhone 15 Pro Max 256GB").category("Electronics").price(1199.0).stock(25).build();
+        Product headphones = Product.builder().name("Sony WH-1000XM5 ANC").category("Electronics").price(399.0).stock(40).build();
+        Product coffeeMaker = Product.builder().name("Breville Barista Express").category("Appliances").price(699.0).stock(10).build();
+        Product airFryer = Product.builder().name("Ninja Foodi Air Fryer XL").category("Appliances").price(179.0).stock(20).build();
+        Product deskLamp = Product.builder().name("BenQ ScreenBar Halo").category("Office").price(129.0).stock(35).build();
 
         List<Product> products = Arrays.asList(laptop, phone, headphones, coffeeMaker, airFryer, deskLamp);
         productRepository.saveAll(products);
-        log.info("Seeded {} products", products.size());
+        log.info("[Data Seeder] Successfully populated {} products into the catalog.", products.size());
 
-        // 2. Seed Historical Orders (for window functions and CTE trends)
+        // 2. Seed Historical Orders (spaced over the last 3 days to test SQL CTE/Window trend query)
         LocalDateTime now = LocalDateTime.now();
 
-        // Order 1: Alice, 2 days ago
+        // Order 1: Budi Santoso, 2 days ago
         Order order1 = Order.builder()
-                .customerName("Alice Smith")
+                .customerName("Budi Santoso")
                 .paymentMethod("CREDIT_CARD")
                 .status(OrderStatus.PROCESSED)
                 .orderDate(now.minusDays(2))
@@ -63,9 +63,9 @@ public class DataInitializer implements CommandLineRunner {
         order1.addOrderItem(item2);
         order1.setTotalAmount(item1.getPrice() * item1.getQuantity() + item2.getPrice() * item2.getQuantity());
 
-        // Order 2: Bob, 1 day ago
+        // Order 2: Dewi Lestari, 1 day ago
         Order order2 = Order.builder()
-                .customerName("Bob Jones")
+                .customerName("Dewi Lestari")
                 .paymentMethod("E_WALLET")
                 .status(OrderStatus.PROCESSED)
                 .orderDate(now.minusDays(1))
@@ -77,9 +77,9 @@ public class DataInitializer implements CommandLineRunner {
         order2.addOrderItem(item4);
         order2.setTotalAmount(item3.getPrice() * item3.getQuantity() + item4.getPrice() * item4.getQuantity());
 
-        // Order 3: Charlie, today
+        // Order 3: Aditya Wibowo, today
         Order order3 = Order.builder()
-                .customerName("Charlie Brown")
+                .customerName("Aditya Wibowo")
                 .paymentMethod("CREDIT_CARD")
                 .status(OrderStatus.PROCESSED)
                 .orderDate(now)
@@ -93,10 +93,10 @@ public class DataInitializer implements CommandLineRunner {
 
         // Save historical orders
         orderRepository.saveAll(Arrays.asList(order1, order2, order3));
-        log.info("Seeded 3 historical orders");
+        log.info("[Data Seeder] Successfully seeded 3 historical transactions.");
 
-        // 3. Seed Redis Leaderboard (to match the seeded transactions)
-        log.info("Pre-populating Redis sales leaderboard based on seeded historical orders...");
+        // 3. Seed Redis Leaderboard (to synchronize the cache grid state with seeded db items)
+        log.info("[Data Seeder] Syncing Redis Sales Leaderboard (ZSET) with database inventory states...");
         productService.recordProductSales(laptop.getId(), 1);
         productService.recordProductSales(headphones.getId(), 2);
         productService.recordProductSales(coffeeMaker.getId(), 1);
@@ -104,6 +104,6 @@ public class DataInitializer implements CommandLineRunner {
         productService.recordProductSales(phone.getId(), 2);
         productService.recordProductSales(deskLamp.getId(), 3);
         
-        log.info("Data initialization completed successfully!");
+        log.info("[Data Seeder] Standalone seed configuration completed successfully.");
     }
 }

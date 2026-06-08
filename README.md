@@ -101,3 +101,28 @@ To run compile checks and the automated unit tests:
 ```bash
 mvn test
 ```
+
+---
+
+## 🐳 Docker Hub CI/CD Integration
+
+The GitHub Actions workflow at [.github/workflows/maven.yml](file:///Users/danang/Documents/gits/java-spring-insight/.github/workflows/maven.yml) is configured to automatically build and push the container image to **Docker Hub** on every push to the `main` or `master` branches.
+
+To enable this integration, configure your repository secrets:
+
+1. **Generate a Docker Hub Access Token**:
+   - Log in to your [Docker Hub Dashboard](https://hub.docker.com/).
+   - Navigate to **Account Settings** -> **Security** -> **New Access Token**.
+   - Generate a token with Read/Write access (e.g., named `github-actions-token`). Copy it.
+
+2. **Configure GitHub Secrets**:
+   - Go to your code repository on GitHub.
+   - Navigate to **Settings** -> **Secrets and variables** -> **Actions**.
+   - Click **New repository secret** to add the following two secrets:
+     - `DOCKER_USERNAME`: Your Docker Hub username.
+     - `DOCKER_PASSWORD`: The Docker Hub access token you copied in Step 1.
+
+Once these secrets are set, any push will automatically trigger the pipeline, compile the application, run tests, compile the Docker image, and upload it to your Docker Hub registry under:
+- `YOUR_USERNAME/insight-app:latest`
+- `YOUR_USERNAME/insight-app:<GIT_COMMIT_SHA>` (useful for tracking exact deployment versions!)
+
