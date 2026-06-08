@@ -1,0 +1,103 @@
+package com.example.insight.config;
+
+import com.example.insight.messaging.OrderEventConsumer;
+import com.example.insight.messaging.OrderPlacedEvent;
+import org.mockito.Mockito;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.context.annotation.Profile;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.ZSetOperations;
+import org.springframework.data.redis.core.ZSetOperations.TypedTuple;
+import org.springframework.kafka.core.KafkaTemplate;
+
+import java.time.Duration;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+
+@Configuration
+@Profile("mock")
+public class MockInfrastructureConfig {
+
+    private final Map<String, Double> leaderboard = new ConcurrentHashMap<>();
+    private final Set<String> locks = ConcurrentHashMap.newKeySet();
+
+    @Bean
+    @SuppressWarnings("unchecked")
+    public RedisTemplate<String, Object> redisTemplate() {
+        RedisTemplate<String, Object> template = Mockito.mock(RedisTemplate.class);
+        ZSetOperations<String, Object> zSetOps = Mockito.mock(ZSetOperations.class);
+        ValueOperations<String, Object> valueOps = Mockito.mock(ValueOperations.class);
+
+        // Mock ZSet operations for Leaderboard
+        Mockito.when(template.opsForZSet()).thenReturn(zSetOps);
+        
+        Mockito.when(zSetOps.incrementScore(Mockito.anyString(), Mockito.any(), Mockito.anyDouble()))
+                .thenAnswer(invocation -> {
+                    String val = invocation.getArgument(1).toString();
+                    Double delta = invocation.getArgument(2);
+                    leaderboard.merge(val, delta, Double::sum);
+                    return leaderboard.get(val);
+                });
+
+        Mockito.when(zSetOps.reverseRangeWithScores(Mockito.anyString(), Mockito.anyLong(), Mockito.anyLong()))
+                .thenAnswer(invocation -> {
+                    return leaderboard.entrySet().stream()
+                            .sorted(Map.Entry.<String, Double>comparingByValue().reversed())
+                            .map(entry -> {
+                                TypedTuple<Object> tuple = Mockito.mock(TypedTuple.class);
+                                Mockito.when(tuple.getValue()).thenReturn(entry.getKey());
+                                Mockito.when(tuple.getScore()).thenReturn(entry.getValue());
+                                return tuple;
+                            })
+                            .collect(Collectors.toCollection(LinkedHashSet::new));
+                });
+
+        // Mock Value operations for Distributed Lock
+        Mockito.when(template.opsForValue()).thenReturn(valueOps);
+        
+        Mockito.when(valueOps.setIfAbsent(Mockito.anyString(), Mockito.any(), Mockito.any(Duration.class)))
+                .thenAnswer(invocation -> {
+                    String key = invocation.getArgument(0);
+                    return locks.add(key); // returns true if lock key was added (not present), false if already locked
+                });
+
+        Mockito.when(template.delete(Mockito.anyString()))
+                .thenAnswer(invocation -> {
+                    String key = invocation.getArgument(0);
+                    return locks.remove(key); // returns true if lock key was deleted
+                });
+
+        return template;
+    }
+
+    @Bean
+    @SuppressWarnings("unchecked")
+    public KafkaTemplate<String, Object> kafkaTemplate(@Lazy OrderEventConsumer consumer) {
+        KafkaTemplate<String, Object> template = Mockito.mock(KafkaTemplate.class);
+
+        // Mock event sending by delivering to local consumer in an async thread to simulate network lag
+        Mockito.when(template.send(Mockito.anyString(), Mockito.anyString(), Mockito.any()))
+                .thenAnswer(invocation -> {
+                    String topic = invocation.getArgument(0);
+                    Object payload = invocation.getArgument(2);
+                    
+                    if ("orders-topic".equals(topic) && payload instanceof OrderPlacedEvent) {
+                        new Thread(() -> {
+                            try {
+                                Thread.sleep(300); // 300ms network lag simulation
+                                consumer.consumeOrderPlaced((OrderPlacedEvent) payload);
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }).start();
+                    }
+                    return null;
+                });
+
+        return template;
+    }
+}

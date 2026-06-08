@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.example.insight.service.AnalyticsStreamTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.414 s -- in com.example.insight.service.AnalyticsStreamTest
