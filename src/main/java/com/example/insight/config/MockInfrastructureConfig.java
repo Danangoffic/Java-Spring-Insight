@@ -2,6 +2,10 @@ package com.example.insight.config;
 
 import com.example.insight.messaging.OrderEventConsumer;
 import com.example.insight.messaging.OrderPlacedEvent;
+import com.example.insight.model.elasticsearch.ProductDocument;
+import com.example.insight.model.mongodb.OrderAudit;
+import com.example.insight.repository.elasticsearch.ProductSearchRepository;
+import com.example.insight.repository.mongodb.OrderAuditRepository;
 import org.mockito.Mockito;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -24,6 +28,10 @@ public class MockInfrastructureConfig {
 
     private final Map<String, Double> leaderboard = new ConcurrentHashMap<>();
     private final Set<String> locks = ConcurrentHashMap.newKeySet();
+
+    // In-memory list stores to simulate DB tables for Elasticsearch and MongoDB
+    private final List<ProductDocument> mockEsIndex = Collections.synchronizedList(new ArrayList<>());
+    private final List<OrderAudit> mockMongoCollection = Collections.synchronizedList(new ArrayList<>());
 
     @Bean
     @SuppressWarnings("unchecked")
@@ -99,5 +107,64 @@ public class MockInfrastructureConfig {
                 });
 
         return template;
+    }
+
+    @Bean
+    @SuppressWarnings("unchecked")
+    public ProductSearchRepository productSearchRepository() {
+        ProductSearchRepository repo = Mockito.mock(ProductSearchRepository.class);
+
+        // Mock save
+        Mockito.when(repo.save(Mockito.any(ProductDocument.class))).thenAnswer(invocation -> {
+            ProductDocument doc = invocation.getArgument(0);
+            mockEsIndex.removeIf(d -> d.getId().equals(doc.getId()));
+            mockEsIndex.add(doc);
+            return doc;
+        });
+
+        // Mock deleteById
+        Mockito.doAnswer(invocation -> {
+            String id = invocation.getArgument(0);
+            mockEsIndex.removeIf(d -> d.getId().equals(id));
+            return null;
+        }).when(repo).deleteById(Mockito.anyString());
+
+        // Mock findByNameContainingOrCategoryContaining
+        Mockito.when(repo.findByNameContainingOrCategoryContaining(Mockito.anyString(), Mockito.anyString()))
+                .thenAnswer(invocation -> {
+                    String query = invocation.getArgument(0).toString().toLowerCase();
+                    return mockEsIndex.stream()
+                            .filter(d -> d.getName().toLowerCase().contains(query) || d.getCategory().toLowerCase().contains(query))
+                            .collect(Collectors.toList());
+                });
+
+        return repo;
+    }
+
+    @Bean
+    @SuppressWarnings("unchecked")
+    public OrderAuditRepository orderAuditRepository() {
+        OrderAuditRepository repo = Mockito.mock(OrderAuditRepository.class);
+
+        // Mock save
+        Mockito.when(repo.save(Mockito.any(OrderAudit.class))).thenAnswer(invocation -> {
+            OrderAudit audit = invocation.getArgument(0);
+            if (audit.getId() == null) {
+                audit.setId(UUID.randomUUID().toString());
+            }
+            mockMongoCollection.add(audit);
+            return audit;
+        });
+
+        // Mock findByOrderIdOrderByTimestampDesc
+        Mockito.when(repo.findByOrderIdOrderByTimestampDesc(Mockito.anyLong())).thenAnswer(invocation -> {
+            Long orderId = invocation.getArgument(0);
+            return mockMongoCollection.stream()
+                    .filter(a -> a.getOrderId().equals(orderId))
+                    .sorted(Comparator.comparing(OrderAudit::getTimestamp).reversed())
+                    .collect(Collectors.toList());
+        });
+
+        return repo;
     }
 }

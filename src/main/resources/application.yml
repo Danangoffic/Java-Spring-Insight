@@ -22,6 +22,11 @@ spring:
     redis:
       host: redis-cache
       port: 6379
+    mongodb:
+      uri: mongodb://mongodb:27017/insight_db
+
+  elasticsearch:
+    uris: http://elasticsearch:9200
 
   kafka:
     bootstrap-servers: kafka-broker:9092
@@ -47,14 +52,20 @@ spring:
   data:
     redis:
       host: localhost
+    mongodb:
+      uri: mongodb://localhost:27017/insight_db
   kafka:
     bootstrap-servers: localhost:9092
+  elasticsearch:
+    uris: http://localhost:9200
 
 ---
 # Mock profile for running application locally with zero external dependencies (H2, In-Memory Caching, Mock Kafka/Redis)
 server:
   port: 8081
 spring:
+  main:
+    allow-bean-definition-overriding: true
   config:
     activate:
       on-profile: mock
@@ -74,4 +85,10 @@ spring:
     exclude:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+      - org.springframework.boot.autoconfigure.mongo.MongoAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.elasticsearch.ElasticsearchRestClientAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchDataAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.elasticsearch.ElasticsearchRepositoriesAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.mongo.MongoRepositoriesAutoConfiguration
 

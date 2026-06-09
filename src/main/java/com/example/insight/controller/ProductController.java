@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import com.example.insight.model.elasticsearch.ProductDocument;
 import java.util.List;
 
 @RestController
@@ -20,6 +21,11 @@ public class ProductController {
     @GetMapping
     public ResponseEntity<List<Product>> getAllProducts() {
         return ResponseEntity.ok(productService.getAllProducts());
+    }
+
+    @GetMapping("/search")
+    public ResponseEntity<List<ProductDocument>> searchProducts(@RequestParam("q") String query) {
+        return ResponseEntity.ok(productService.searchProducts(query));
     }
 
     @GetMapping("/{id}")

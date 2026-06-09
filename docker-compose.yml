@@ -60,6 +60,36 @@ services:
       timeout: 10s
       retries: 5
 
+  mongodb:
+    image: mongo:6.0-alpine
+    container_name: mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.1
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
   insight-app:
     build: .
     container_name: insight-app
@@ -72,12 +102,21 @@ services:
         condition: service_healthy
       kafka-broker:
         condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
     environment:
       - SPRING_PROFILES_ACTIVE=default
       - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres-db:5432/insight_db
       - SPRING_DATA_REDIS_HOST=redis-cache
       - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka-broker:9092
+      - SPRING_DATA_MONGODB_URI=mongodb://mongodb:27017/insight_db
+      - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
 
 volumes:
   postgres_data:
   redis_data:
+  mongodb_data:
+  elasticsearch_data:
+

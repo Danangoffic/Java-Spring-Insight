@@ -4,9 +4,11 @@ import com.example.insight.model.Order;
 import com.example.insight.model.OrderItem;
 import com.example.insight.model.OrderStatus;
 import com.example.insight.model.Product;
+import com.example.insight.model.mongodb.OrderAudit;
 import com.example.insight.messaging.OrderEventProducer;
 import com.example.insight.messaging.OrderPlacedEvent;
 import com.example.insight.repository.OrderRepository;
+import com.example.insight.repository.mongodb.OrderAuditRepository;
 import com.example.insight.service.payment.PaymentResolver;
 import com.example.insight.service.payment.PaymentStrategy;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +20,9 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -31,6 +35,7 @@ public class OrderService {
     private final PaymentResolver paymentResolver;
     private final OrderEventProducer eventProducer;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final OrderAuditRepository orderAuditRepository;
 
     @Transactional
     public Order placeOrder(String customerName, String paymentMethod, List<OrderItemRequest> itemRequests) {
@@ -98,6 +103,26 @@ public class OrderService {
 
         Order savedOrder = orderRepository.save(order);
         log.info("Order saved as PENDING with ID: {}", savedOrder.getId());
+
+        // Save order placement audit trail in MongoDB
+        try {
+            Map<String, Object> auditDetails = new HashMap<>();
+            auditDetails.put("customer", customerName);
+            auditDetails.put("totalAmount", totalAmount);
+            auditDetails.put("paymentMethod", paymentMethod);
+            auditDetails.put("itemCount", itemRequests.size());
+            
+            OrderAudit audit = OrderAudit.builder()
+                    .orderId(savedOrder.getId())
+                    .action("ORDER_PLACED")
+                    .timestamp(LocalDateTime.now())
+                    .details(auditDetails)
+                    .build();
+            orderAuditRepository.save(audit);
+            log.info("Saved ORDER_PLACED audit log in MongoDB for Order ID: {}", savedOrder.getId());
+        } catch (Exception e) {
+            log.error("Failed to save ORDER_PLACED audit log in MongoDB", e);
+        }
 
         // Send order event to Kafka topic
         List<OrderPlacedEvent.OrderItemEvent> eventItems = savedOrder.getItems().stream()

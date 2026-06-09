@@ -2,7 +2,9 @@ package com.example.insight.service;
 
 import com.example.insight.dto.ProductLeaderboardDto;
 import com.example.insight.model.Product;
+import com.example.insight.model.elasticsearch.ProductDocument;
 import com.example.insight.repository.ProductRepository;
+import com.example.insight.repository.elasticsearch.ProductSearchRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
@@ -24,6 +26,7 @@ import java.util.stream.Collectors;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final ProductSearchRepository productSearchRepository;
     private final RedisTemplate<String, Object> redisTemplate;
 
     public static final String LEADERBOARD_KEY = "leaderboard:products:sold";
@@ -48,7 +51,19 @@ public class ProductService {
     @Transactional
     public Product createProduct(Product product) {
         log.info("Saving product: {}", product.getName());
-        return productRepository.save(product);
+        Product saved = productRepository.save(product);
+        
+        // Sync to Elasticsearch index
+        ProductDocument doc = ProductDocument.builder()
+                .id(saved.getId().toString())
+                .name(saved.getName())
+                .category(saved.getCategory())
+                .price(saved.getPrice())
+                .stock(saved.getStock())
+                .build();
+        productSearchRepository.save(doc);
+        
+        return saved;
     }
 
     // Update product and save in Redis
@@ -61,7 +76,19 @@ public class ProductService {
         product.setCategory(productDetails.getCategory());
         product.setPrice(productDetails.getPrice());
         product.setStock(productDetails.getStock());
-        return productRepository.save(product);
+        Product saved = productRepository.save(product);
+        
+        // Sync update to Elasticsearch index
+        ProductDocument doc = ProductDocument.builder()
+                .id(saved.getId().toString())
+                .name(saved.getName())
+                .category(saved.getCategory())
+                .price(saved.getPrice())
+                .stock(saved.getStock())
+                .build();
+        productSearchRepository.save(doc);
+        
+        return saved;
     }
 
     // Delete product and evict from cache
@@ -70,6 +97,9 @@ public class ProductService {
     public void deleteProduct(Long id) {
         log.info("Deleting product ID: {}", id);
         productRepository.deleteById(id);
+        
+        // Remove from Elasticsearch index
+        productSearchRepository.deleteById(id.toString());
     }
 
     /**
@@ -111,5 +141,13 @@ public class ProductService {
                     .unitsSold(score)
                     .build();
         }).collect(Collectors.toList());
+    }
+
+    /**
+     * Search products in Elasticsearch index
+     */
+    public List<ProductDocument> searchProducts(String query) {
+        log.info("Searching products in Elasticsearch for query: {}", query);
+        return productSearchRepository.findByNameContainingOrCategoryContaining(query, query);
     }
 }
